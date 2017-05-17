@@ -44,6 +44,7 @@
 
 #include "TTree.h"
 #include "TH1F.h"
+#include "TPrincipal.h"
 #include "FWCore/ServiceRegistry/interface/Service.h"
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 
@@ -75,13 +76,14 @@ private:
 virtual void beginJob() override;
 virtual void analyze(const edm::Event&, const edm::EventSetup&) override;
 virtual void endJob() override;
-virtual void fillLayerCluster(const edm::Ptr<reco::CaloCluster>& layerCluster, const bool& fillRecHits, const unsigned int& multiClusterIndex = -1);
-virtual void fillRecHit(const DetId& detid, const float& fraction, const unsigned int& layer, const unsigned int& cluster_index = -1);
+virtual void fillLayerCluster(const edm::Ptr<reco::CaloCluster>& layerCluster, const bool& fillRecHits, const int& multiClusterIndex = -1);
+virtual void fillRecHit(const DetId& detid, const float& fraction, const unsigned int& layer, const int& cluster_index = -1);
 
 void clearVariables();
 
 void retrieveLayerPositions(const edm::EventSetup&, unsigned layers);
 
+void computePCA(const reco::CaloCluster &);
 // ---------parameters ----------------------------
 bool readOfficialReco;
 bool readCaloParticles;
@@ -108,6 +110,8 @@ edm::EDGetTokenT<edm::HepMCProduct> _hev;
 edm::EDGetTokenT<std::vector<reco::Track> > _tracks;
 
 TTree                     *t;
+
+TPrincipal *pca_;
 
 ////////////////////
 // event
@@ -187,6 +191,18 @@ std::vector<float> multiclus_slopeX;
 std::vector<float> multiclus_slopeY;
 std::vector<std::vector<unsigned int> > multiclus_cluster2d;
 std::vector<int> multiclus_cl2dSeed;
+std::vector<float> multiclus_pcaAxisX;
+std::vector<float> multiclus_pcaAxisY;
+std::vector<float> multiclus_pcaAxisZ;
+std::vector<float> multiclus_pcaPosX;
+std::vector<float> multiclus_pcaPosY;
+std::vector<float> multiclus_pcaPosZ;
+std::vector<float> multiclus_eigenVal1;
+std::vector<float> multiclus_eigenVal2;
+std::vector<float> multiclus_eigenVal3;
+std::vector<float> multiclus_eigenSig1;
+std::vector<float> multiclus_eigenSig2;
+std::vector<float> multiclus_eigenSig3;
 
 ////////////////////
 // sim clusters
@@ -274,6 +290,7 @@ HGCalAnalysis::HGCalAnalysis(const edm::ParameterSet& iConfig) :
 {
 	// now do what ever initialization is needed
 	mySimEvent = new FSimEvent(particleFilter);
+	pca_ = new TPrincipal(3,"D"); 
 
 	if(detector=="all") {
 		_recHitsEE = consumes<HGCRecHitCollection>(edm::InputTag("HGCalRecHit","HGCEERecHits"));
@@ -386,6 +403,18 @@ HGCalAnalysis::HGCalAnalysis(const edm::ParameterSet& iConfig) :
 	t->Branch("multiclus_slopeY", &multiclus_slopeY);
 	t->Branch("multiclus_cluster2d", &multiclus_cluster2d);
 	t->Branch("multiclus_cl2dSeed", &multiclus_cl2dSeed);
+	t->Branch("multiclus_pcaAxisX", &multiclus_pcaAxisX); 
+	t->Branch("multiclus_pcaAxisY", &multiclus_pcaAxisY); 
+	t->Branch("multiclus_pcaAxisZ", &multiclus_pcaAxisZ);
+	t->Branch("multiclus_pcaPosX", &multiclus_pcaPosX);  
+	t->Branch("multiclus_pcaPosY", &multiclus_pcaPosY);  
+	t->Branch("multiclus_pcaPosZ", &multiclus_pcaPosZ);  
+	t->Branch("multiclus_eigenVal1", &multiclus_eigenVal1);
+	t->Branch("multiclus_eigenVal2", &multiclus_eigenVal2);
+	t->Branch("multiclus_eigenVal3", &multiclus_eigenVal3);
+	t->Branch("multiclus_eigenSig1", &multiclus_eigenSig1);
+	t->Branch("multiclus_eigenSig2", &multiclus_eigenSig2);
+	t->Branch("multiclus_eigenSig3", &multiclus_eigenSig3);
 
 	////////////////////
 	// sim clusters
@@ -523,6 +552,18 @@ void HGCalAnalysis::clearVariables() {
 	multiclus_slopeY.clear();
 	multiclus_cluster2d.clear();
 	multiclus_cl2dSeed.clear();
+        multiclus_pcaAxisX.clear(); 	
+	multiclus_pcaAxisY.clear(); 
+	multiclus_pcaAxisZ.clear(); 
+	multiclus_pcaPosX.clear();  
+	multiclus_pcaPosY.clear();  
+	multiclus_pcaPosZ.clear();  
+	multiclus_eigenVal1.clear();
+	multiclus_eigenVal2.clear();
+	multiclus_eigenVal3.clear();
+	multiclus_eigenSig1.clear();
+	multiclus_eigenSig2.clear();
+	multiclus_eigenSig3.clear();
 
 	////////////////////
 	// sim clusters
@@ -837,6 +878,28 @@ HGCalAnalysis::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 		multiclus_cluster2d.push_back(cl2dIndices);
 		multiclus_cl2dSeed.push_back(cl2dSeed);
 
+		pca_->MakePrincipals();
+		const TVectorD& means = *(pca_->GetMeanValues());
+		const TMatrixD& eigens = *(pca_->GetEigenVectors());
+		const TVectorD& eigenVals = *(pca_->GetEigenValues());
+		const TVectorD& sigmas = *(pca_->GetSigmas());
+		math::XYZPoint barycenter(means[0],means[1],means[2]);
+		math::XYZVector axis(eigens(0,0),eigens(1,0),eigens(2,0));
+		if( axis.z()*barycenter.z() < 0.0 ) {
+		  axis = math::XYZVector(-eigens(0,0),-eigens(1,0),-eigens(2,0));
+		}
+		multiclus_pcaAxisX.push_back(axis.x());
+		multiclus_pcaAxisY.push_back(axis.y());
+		multiclus_pcaAxisZ.push_back(axis.z());
+		multiclus_pcaPosX.push_back(barycenter.x());
+		multiclus_pcaPosY.push_back(barycenter.y());
+		multiclus_pcaPosZ.push_back(barycenter.z());
+		multiclus_eigenVal1.push_back(eigenVals(0));
+		multiclus_eigenVal2.push_back(eigenVals(1));
+		multiclus_eigenVal3.push_back(eigenVals(2));
+		multiclus_eigenSig1.push_back(sigmas(0));
+		multiclus_eigenSig2.push_back(sigmas(1));
+		multiclus_eigenSig3.push_back(sigmas(2));
 	}
 
 	// Fills the additional 2d layers
@@ -1102,7 +1165,7 @@ void HGCalAnalysis::retrieveLayerPositions(const edm::EventSetup& es, unsigned l
 }
 
 
-void HGCalAnalysis::fillLayerCluster(const edm::Ptr<reco::CaloCluster>& layerCluster, const bool& fillRecHits, const unsigned int& multiClusterIndex) {
+void HGCalAnalysis::fillLayerCluster(const edm::Ptr<reco::CaloCluster>& layerCluster, const bool& fillRecHits, const int& multiClusterIndex) {
 
 	// std::cout << "in fillLayerCluster" << std::endl;
 	const std::vector< std::pair<DetId, float> > &hf = layerCluster->hitsAndFractions();
@@ -1114,6 +1177,7 @@ void HGCalAnalysis::fillLayerCluster(const edm::Ptr<reco::CaloCluster>& layerClu
 		rhSeed = -1;
 	}
 	float maxEnergy = -1.;
+	Double_t pcavars[3];
 
 	for(unsigned int j = 0; j < hf.size(); j++) {
 		//here we loop over detid/fraction pairs
@@ -1122,6 +1186,12 @@ void HGCalAnalysis::fillLayerCluster(const edm::Ptr<reco::CaloCluster>& layerClu
 		layer = recHitTools.getLayerWithOffset(rh_detid);
 		const HGCRecHit *hit = hitmap[rh_detid];
 		ncoreHit += int(fraction);
+		if(multiClusterIndex>=0) {
+		  pcavars[0] = recHitTools.getPosition(rh_detid).x();
+		  pcavars[1] = recHitTools.getPosition(rh_detid).y();
+		  pcavars[2] = recHitTools.getPosition(rh_detid).z();
+		  pca_->AddRow(pcavars);
+		}
 
 		if (fillRecHits) {
 			if(storedRecHits.find(rh_detid)==storedRecHits.end() ) {
@@ -1164,7 +1234,7 @@ void HGCalAnalysis::fillLayerCluster(const edm::Ptr<reco::CaloCluster>& layerClu
 }
 
 
-void HGCalAnalysis::fillRecHit(const DetId& detid, const float& fraction, const unsigned int& layer, const unsigned int& cluster_index) {
+void HGCalAnalysis::fillRecHit(const DetId& detid, const float& fraction, const unsigned int& layer, const int& cluster_index) {
 
 	// std::cout << "in fillRecHit" << std::endl;
 	int flags = 0x0;
