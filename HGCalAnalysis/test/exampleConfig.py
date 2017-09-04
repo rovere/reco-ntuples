@@ -15,13 +15,15 @@ process.GlobalTag = GlobalTag(process.GlobalTag, 'auto:phase2_realistic', '')
 from FastSimulation.Event.ParticleFilter_cfi import *
 from RecoLocalCalo.HGCalRecProducers.HGCalRecHit_cfi import dEdX_weights as dEdX
 
-process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(10) )
+process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(-1) )
 
 process.source = cms.Source("PoolSource",
     # replace 'myfile.root' with the source file you want to use
     fileNames = cms.untracked.vstring(
-        '/store/relval/CMSSW_9_3_0_pre4/RelValTTbar_14TeV/GEN-SIM-RECO/PU25ns_93X_upgrade2023_realistic_v0_D17PU200-v1/00000/082041D3-1E89-E711-80AA-0242AC130002.root'
-    ),
+#        '/store/relval/CMSSW_9_3_0_pre4/RelValTTbar_14TeV/GEN-SIM-RECO/PU25ns_93X_upgrade2023_realistic_v0_D17PU200-v1/00000/082041D3-1E89-E711-80AA-0242AC130002.root'
+    '/store/relval/CMSSW_9_3_0_pre4/RelValZEE_14/GEN-SIM-RECO/PU25ns_93X_upgrade2023_realistic_v0_D17PU200-v1/00000/FC2D0E71-7589-E711-866F-0242AC130002.root'
+#     '/store/relval/CMSSW_9_3_0_pre4/RelValZEE_14/GEN-SIM-RECO/93X_upgrade2023_realistic_v0_2023D17noPU-v1/00000/02644B15-7887-E711-A2B7-0025905A6068.root'
+),
     duplicateCheckMode = cms.untracked.string("noDuplicateCheck")
 )
 
@@ -47,7 +49,7 @@ process.TFileService = cms.Service("TFileService",
 
                                    )
 
-reRunClustering = True
+reRunClustering = False
 
 if reRunClustering:
     #process.hgcalLayerClusters.minClusters = cms.uint32(0)
